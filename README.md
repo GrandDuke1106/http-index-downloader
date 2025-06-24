@@ -93,13 +93,13 @@ python src/main.py "https://example.com/path/" --threads 20
 python src/main.py "https://example.com/path/" --verbose
 
 # 仅下载更新的文件（时间戳比较）
-python downloader.py http://example.com/dir/ --update
+python src/main.py http://example.com/path/ --update
 
 # 使用校验和验证并备份已存在文件
-python downloader.py http://example.com/dir/ --checksum --existing backup
+python src/main.py http://example.com/path/ --checksum --existing backup
 
 # 完整下载（覆盖所有文件）
-python downloader.py http://example.com/dir/ --existing overwrite
+python src/main.py http://example.com/path/ --existing overwrite
 ```
 
 
