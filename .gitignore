@@ -2,7 +2,9 @@
 
 
 !.gitignore
-!main.py
+!http_index_downloader
 !README.md
 !LICENSE
 !.git/
+!requirements.txt
+!.github/
