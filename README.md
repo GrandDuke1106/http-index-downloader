@@ -36,13 +36,13 @@ pip install requests beautifulsoup4
 ### 基本用法
 
 ```bash
-python http_index_downloader.py "https://user:pass@example.com/path/"
+python src/main.py "https://user:pass@example.com/path/"
 ```
 
 ### 完整语法
 
 ```bash
-python http_index_downloader.py [URL] [选项]
+python src/main.py [URL] [选项]
 ```
 
 ### 选项说明
@@ -60,10 +60,10 @@ python http_index_downloader.py [URL] [选项]
 
 ```bash
 # 使用 HTTP 代理
-python http_index_downloader.py "https://example.com/path/" --proxy "http://proxy.example.com:8080"
+python src/main.py "https://example.com/path/" --proxy "http://proxy.example.com:8080"
 
 # 使用需要认证的代理
-python http_index_downloader.py "https://example.com/path/" --proxy "http://username:password@proxy.example.com:8080"
+python src/main.py "https://example.com/path/" --proxy "http://username:password@proxy.example.com:8080"
 
 ```
 
@@ -71,26 +71,26 @@ python http_index_downloader.py "https://example.com/path/" --proxy "http://user
 
 ```bash
 # URL 中包含认证信息
-python http_index_downloader.py "https://user:pass@example.com/path/"
+python src/main.py "https://user:pass@example.com/path/"
 
 # 使用命令行参数显式指定认证
-python http_index_downloader.py "https://example.com/path/" --username user --password pass
+python src/main.py "https://example.com/path/" --username user --password pass
 
 # 同时使用代理和认证
-python http_index_downloader.py "https://example.com/path/" --proxy "http://username:password@proxy:8080" --username user --password pass
+python src/main.py "https://example.com/path/" --proxy "http://username:password@proxy:8080" --username user --password pass
 ```
 
 ### 高级用法
 
 ```bash
 # 自定义输出目录
-python http_index_downloader.py "https://example.com/path/" --output "my_downloads"
+python src/main.py "https://example.com/path/" --output "my_downloads"
 
 # 增加并发线程数（提高下载速度）
-python http_index_downloader.py "https://example.com/path/" --threads 20
+python src/main.py "https://example.com/path/" --threads 20
 
 # 启用详细日志模式（调试用）
-python http_index_downloader.py "https://example.com/path/" --verbose
+python src/main.py "https://example.com/path/" --verbose
 ```
 
 

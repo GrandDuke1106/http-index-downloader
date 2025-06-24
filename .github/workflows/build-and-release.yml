@@ -3,7 +3,7 @@ name: Build and Release with Nuitka
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'  # 当推送以 v 开头的标签时触发 (例如 v1.0.0)
 
 jobs:
   build:
@@ -19,7 +19,7 @@ jobs:
             nuitka_arch: x86_64
           - os: macos-latest
             artifact_name: macos_universal
-            nuitka_arch: universal2
+            nuitka_arch: universal
           - os: windows-latest
             artifact_name: windows_x64
             nuitka_arch: x86_64
@@ -37,65 +37,106 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y patchelf ccache
+        sudo apt-get install -y patchelf ccache zip
         
     - name: Install macOS dependencies
       if: runner.os == 'macOS'
       run: |
         brew install ccache
         
+    - name: Install Windows dependencies
+      if: runner.os == 'Windows'
+      run: |
+        choco install -y zip
+        
     - name: Install build tools
       run: |
         python -m pip install --upgrade pip
         pip install nuitka zstandard ordered-set
         
-    - name: Build with Nuitka
+    # 为每个平台使用不同的构建脚本
+    - name: Build for Linux
+      if: runner.os == 'Linux'
       run: |
-        # 创建构建目录
         mkdir -p build/${{ matrix.artifact_name }}
+        python -m nuitka \
+          --standalone \
+          --onefile \
+          --assume-yes-for-downloads \
+          --enable-plugin=tk-inter \
+          --plugin-enable=pylint-warnings \
+          --output-filename=app \
+          --output-dir=build/${{ matrix.artifact_name }} \
+          src/main.py
         
-        # 设置 Nuitka 参数
-        nuitka_args="--standalone --onefile --assume-yes-for-downloads"
-        nuitka_args+=" --enable-plugin=tk-inter --plugin-enable=pylint-warnings"
-        nuitka_args+=" --output-dir=build/${{ matrix.artifact_name }}"
+    - name: Build for macOS
+      if: runner.os == 'macOS'
+      run: |
+        mkdir -p build/${{ matrix.artifact_name }}
+        python -m nuitka \
+          --standalone \
+          --onefile \
+          --assume-yes-for-downloads \
+          --enable-plugin=tk-inter \
+          --plugin-enable=pylint-warnings \
+          --macos-create-app-bundle \
+          --macos-app-icon=assets/icon.icns \
+          --macos-target-arch=${{ matrix.nuitka_arch }} \
+          --output-filename=app \
+          --output-dir=build/${{ matrix.artifact_name }} \
+          src/main.py
         
-        # 添加 macOS 特定参数
-        if [ "${{ runner.os }}" = "macOS" ]; then
-          nuitka_args+=" --macos-create-app-bundle"
-          nuitka_args+=" --macos-app-icon=assets/icon.icns"
-          nuitka_args+=" --macos-target-arch=${{ matrix.nuitka_arch }}"
-        fi
+    - name: Build for Windows
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        mkdir build\%ARTIFACT_NAME%
+        python -m nuitka ^
+          --standalone ^
+          --onefile ^
+          --assume-yes-for-downloads ^
+          --enable-plugin=tk-inter ^
+          --plugin-enable=pylint-warnings ^
+          --windows-icon-from-ico=assets/icon.ico ^
+          --windows-company-name=MyCompany ^
+          --windows-product-name=MyApp ^
+          --output-filename=app.exe ^
+          --output-dir=build\%ARTIFACT_NAME% ^
+          src/main.py
+      env:
+        ARTIFACT_NAME: ${{ matrix.artifact_name }}
         
-        # 添加 Windows 特定参数
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          nuitka_args+=" --windows-icon-from-ico=assets/icon.ico"
-          nuitka_args+=" --windows-company-name=MyCompany"
-          nuitka_args+=" --windows-product-name=MyApp"
-        fi
-        
-        # 执行构建
-        python -m nuitka $nuitka_args src/main.py
-        
+    # 统一打包步骤
     - name: Package artifacts
       run: |
         cd build/${{ matrix.artifact_name }}
         
-        # 重命名文件以包含平台信息
-        if [ "${{ runner.os }}" = "Windows" ]; then
-          mv main.exe ${{ matrix.artifact_name }}_app.exe
-          7z a ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app.exe
-        else
-          mv main ${{ matrix.artifact_name }}_app
-          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+        if [ "${{ runner.os }}" = "Linux" ] || [ "${{ runner.os }}" = "macOS" ]; then
+          # Linux/macOS 使用通用打包逻辑
+          if [ -f "app" ]; then
+            mv app ${{ matrix.artifact_name }}_app
+            zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+          elif [ -f "app.bin" ]; then
+            mv app.bin ${{ matrix.artifact_name }}_app
+            zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+          else
+            echo "Error: No build output found!"
+            ls -la
+            exit 1
+          fi
+        elif [ "${{ runner.os }}" = "Windows" ]; then
+          # Windows 打包逻辑
+          if exist "app.exe" (
+            ren app.exe ${{ matrix.artifact_name }}_app.exe
+            zip -r ..\${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app.exe
+          ) else (
+            echo Error: No build output found!
+            dir
+            exit /b 1
+          )
         fi
         
         cd ../..
-        
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact_name }}_build
-        path: build/${{ matrix.artifact_name }}.zip
   
   create-release:
     name: Create Release
