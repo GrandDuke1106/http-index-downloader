@@ -6,23 +6,89 @@ on:
       - 'v*'  # 当推送以 v 开头的标签时触发 (例如 v1.0.0)
 
 jobs:
-  build:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            artifact_name: linux_x64
-            nuitka_arch: x86_64
-          - os: macos-latest
-            artifact_name: macos_arm64
-            nuitka_arch: arm64
-          - os: windows-latest
-            artifact_name: windows_x64
-            nuitka_arch: x86_64
+  linux-build:
+    name: Build Linux compatible binary
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux2014_x86_64
+      options: --privileged
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        yum -y update
+        yum -y groupinstall "Development Tools"
+        yum -y install zlib-devel bzip2 bzip2-devel readline-devel sqlite \
+            sqlite-devel openssl-devel xz xz-devel libffi-devel findutils \
+            wget gcc-c++ make glibc-static
+        
+    - name: Install Python 3.11
+      run: |
+        PYTHON_VERSION=3.11.13
+        wget https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz
+        tar xzf Python-$PYTHON_VERSION.tgz
+        cd Python-$PYTHON_VERSION
+        ./configure --enable-optimizations
+        make -j $(nproc)
+        make altinstall
+        cd ..
+        
+        alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.11 1
+        alternatives --set python3 /usr/local/bin/python3.11
+        
+        python3 --version
+        pip3.11 --version
+    
+    - name: Install build tools and dependencies
+      run: |
+        pip3.11 install --upgrade pip
+        pip3.11 install nuitka zstandard ordered-set
+        pip3.11 install -r requirements.txt
+        
+    - name: Build with Nuitka
+      run: |
+        mkdir -p build/linux_x64
+        python3.11 -m nuitka \
+          --standalone \
+          --onefile \
+          --assume-yes-for-downloads \
+          --enable-plugin=tk-inter \
+          --plugin-enable=pylint-warnings \
+          --output-filename=app \
+          --output-dir=build/linux_x64 \
+          src/main.py
+        
+    - name: Package Linux artifact
+      run: |
+        cd build/linux_x64
+        
+        if [ -f "app" ]; then
+          mv app linux_x64_app
+          zip -r ../linux_x64.zip linux_x64_app
+        elif [ -f "app.bin" ]; then
+          mv app.bin linux_x64_app
+          zip -r ../linux_x64.zip linux_x64_app
+        else
+          echo "Error: No build output found! Contents:"
+          ls -la
+          exit 1
+        fi
+        
+        cd ../..
+        
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux_x64_build
+        path: build/linux_x64.zip
+  
+  macos-build:
+    name: Build for macOS
+    runs-on: macos-latest
+    needs: linux-build
     
     steps:
     - name: Checkout repository
@@ -32,47 +98,20 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-
-    - name: Install system dependencies
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y patchelf ccache zip
-        
+    
     - name: Install macOS dependencies
-      if: runner.os == 'macOS'
       run: |
         brew install ccache
         
-    - name: Install Windows dependencies
-      if: runner.os == 'Windows'
-      run: |
-        choco install -y zip
-        
-    - name: Install build tools
+    - name: Install build tools and dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install nuitka zstandard ordered-set beautifulsoup4 requests
-        
-    # 为所有平台添加模块包含指令
-    - name: Build for Linux
-      if: runner.os == 'Linux'
-      run: |
-        mkdir -p build/${{ matrix.artifact_name }}
-        python -m nuitka \
-          --standalone \
-          --onefile \
-          --assume-yes-for-downloads \
-          --enable-plugin=tk-inter \
-          --plugin-enable=pylint-warnings \
-          --output-filename=app \
-          --output-dir=build/${{ matrix.artifact_name }} \
-          src/main.py
+        pip install nuitka zstandard ordered-set
+        pip install -r requirements.txt
         
     - name: Build for macOS
-      if: runner.os == 'macOS'
       run: |
-        mkdir -p build/${{ matrix.artifact_name }}
+        mkdir -p build/macos_arm64
         python -m nuitka \
           --standalone \
           --onefile \
@@ -81,16 +120,63 @@ jobs:
           --plugin-enable=pylint-warnings \
           --macos-create-app-bundle \
           --macos-app-icon=assets/icon.icns \
-          --macos-target-arch=${{ matrix.nuitka_arch }} \
+          --macos-target-arch=arm64 \
           --output-filename=app \
-          --output-dir=build/${{ matrix.artifact_name }} \
+          --output-dir=build/macos_arm64 \
           src/main.py
         
+    - name: Package macOS artifact
+      run: |
+        cd build/macos_arm64
+        
+        if [ -f "app" ]; then
+          mv app macos_arm64_app
+          zip -r ../macos_arm64.zip macos_arm64_app
+        elif [ -f "app.bin" ]; then
+          mv app.bin macos_arm64_app
+          zip -r ../macos_arm64.zip macos_arm64_app
+        else
+          echo "Error: No build output found! Contents:"
+          ls -la
+          exit 1
+        fi
+        
+        cd ../..
+        
+    - name: Upload macOS artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos_arm64_build
+        path: build/macos_arm64.zip
+  
+  windows-build:
+    name: Build for Windows
+    runs-on: windows-latest
+    needs: linux-build
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install Windows dependencies
+      run: |
+        choco install -y zip
+        
+    - name: Install build tools and dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install nuitka zstandard ordered-set
+        pip install -r requirements.txt
+        
     - name: Build for Windows
-      if: runner.os == 'Windows'
       shell: cmd
       run: |
-        mkdir build\%ARTIFACT_NAME%
+        mkdir build\windows_x64
         python -m nuitka ^
           --standalone ^
           --onefile ^
@@ -103,61 +189,17 @@ jobs:
           --windows-file-version=1.0.0 ^
           --windows-product-version=1.0.0 ^
           --output-filename=app.exe ^
-          --output-dir=build\%ARTIFACT_NAME% ^
+          --output-dir=build\windows_x64 ^
           src/main.py
-      env:
-        ARTIFACT_NAME: ${{ matrix.artifact_name }}
-        
-    # 平台独立的打包步骤
-    - name: Package Linux artifact
-      if: runner.os == 'Linux'
-      run: |
-        cd build/${{ matrix.artifact_name }}
-        
-        # 检查可能的输出文件名
-        if [ -f "app" ]; then
-          mv app ${{ matrix.artifact_name }}_app
-          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
-        elif [ -f "app.bin" ]; then
-          mv app.bin ${{ matrix.artifact_name }}_app
-          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
-        else
-          echo "Error: No build output found! Contents:"
-          ls -la
-          exit 1
-        fi
-        
-        cd ../..
-        
-    - name: Package macOS artifact
-      if: runner.os == 'macOS'
-      run: |
-        cd build/${{ matrix.artifact_name }}
-        
-        # 检查可能的输出文件名
-        if [ -f "app" ]; then
-          mv app ${{ matrix.artifact_name }}_app
-          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
-        elif [ -f "app.bin" ]; then
-          mv app.bin ${{ matrix.artifact_name }}_app
-          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
-        else
-          echo "Error: No build output found! Contents:"
-          ls -la
-          exit 1
-        fi
-        
-        cd ../..
         
     - name: Package Windows artifact
-      if: runner.os == 'Windows'
       shell: cmd
       run: |
-        cd build\%ARTIFACT_NAME%
+        cd build\windows_x64
         
         if exist "app.exe" (
-          ren app.exe %ARTIFACT_NAME%_app.exe
-          zip -r ..\%ARTIFACT_NAME%.zip %ARTIFACT_NAME%_app.exe
+          ren app.exe windows_x64_app.exe
+          zip -r ..\windows_x64.zip windows_x64_app.exe
         ) else (
           echo Error: No build output found! Contents:
           dir
@@ -165,19 +207,17 @@ jobs:
         )
         
         cd ..\..
-      env:
-        ARTIFACT_NAME: ${{ matrix.artifact_name }}
-  
-    - name: Upload artifact
+        
+    - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact_name }}_build
-        path: build/${{ matrix.artifact_name }}.zip
+        name: windows_x64_build
+        path: build/windows_x64.zip
   
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: build
+    needs: [linux-build, macos-build, windows-build]
     
     steps:
     - name: Download all artifacts
@@ -195,51 +235,26 @@ jobs:
         echo "## Version ${GITHUB_REF_NAME}" >> release/CHANGELOG.md
         echo "- Built on $(date)" >> release/CHANGELOG.md
         echo "- Includes builds for Windows, macOS (ARM64) and Linux" >> release/CHANGELOG.md
+        echo "- Linux build is compatible with CentOS 7 and older systems" >> release/CHANGELOG.md
         echo "" >> release/CHANGELOG.md
         echo "## Installation" >> release/CHANGELOG.md
         echo "Download the appropriate package for your system:" >> release/CHANGELOG.md
         echo "- Windows: windows_x64.zip" >> release/CHANGELOG.md
         echo "- macOS (Apple Silicon): macos_arm64.zip" >> release/CHANGELOG.md
-        echo "- Linux: linux_x64.zip" >> release/CHANGELOG.md
+        echo "- Linux (CentOS 7 compatible): linux_x64.zip" >> release/CHANGELOG.md
         
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref_name }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         body_path: release/CHANGELOG.md
         draft: false
         prerelease: false
-    
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: release/linux_x64.zip
-        asset_name: linux_x64.zip
-        asset_content_type: application/zip
-    
-    - name: Upload Windows Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: release/windows_x64.zip
-        asset_name: windows_x64.zip
-        asset_content_type: application/zip
-    
-    - name: Upload macOS Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: release/macos_arm64.zip
-        asset_name: macos_arm64.zip
-        asset_content_type: application/zip
+        files: |
+          release/linux_x64.zip
+          release/macos_arm64.zip
+          release/windows_x64.zip
