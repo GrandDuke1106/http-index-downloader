@@ -42,7 +42,14 @@ jobs:
           # 安装构建工具和依赖
           pip3 install --upgrade pip
           pip3 install nuitka zstandard ordered-set
-          pip3 install -r requirements.txt
+
+          # 安装项目依赖 (使用工作目录路径)
+          if [ -f "/workspace/requirements.txt" ]; then
+            pip3 install -r /workspace/requirements.txt 
+          else
+            echo "Warning: requirements.txt not found! Installing default dependencies"
+            pip3 install requests beautifulsoup4 
+          fi
           
           # 使用 Nuitka 构建
           cd /workspace
