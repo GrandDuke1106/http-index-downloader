@@ -9,70 +9,62 @@ jobs:
   linux-build:
     name: Build Linux compatible binary
     runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux2014_x86_64
+      options: --privileged
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
-    - name: Build in CentOS 7 container
+    
+    - name: Install system dependencies
       run: |
-        # 创建构建目录
-        mkdir -p build/linux_x64
+        yum -y install glibc-static zip
+      
+    - name: Set up Python
+      run: |
+        # 设置 Python 3.11
+        ln -s /opt/python/cp311-cp311/bin/python /usr/local/bin/python3.11
+        ln -s /opt/python/cp311-cp311/bin/pip /usr/local/bin/pip3.11
+        python3.11 --version
         
-        # 使用 Docker 运行 CentOS 7 容器
-        docker run --rm -v "$(pwd):/workspace" -w /workspace centos:7 \
-          bash -c '
-          # 安装系统依赖
-          yum -y update
-          yum -y groupinstall "Development Tools"
-          yum -y install zlib-devel bzip2 bzip2-devel readline-devel sqlite \
-              sqlite-devel openssl-devel xz xz-devel libffi-devel findutils \
-              wget gcc-c++ make glibc-static
-          
-          # 安装 Python 3.11
-          PYTHON_VERSION=3.11.13
-          wget https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz
-          tar xzf Python-$PYTHON_VERSION.tgz
-          cd Python-$PYTHON_VERSION
-          ./configure --enable-optimizations
-          make -j $(nproc)
-          make altinstall
-          cd ..
-          
-          alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.11 1
-          alternatives --set python3 /usr/local/bin/python3.11
-          
-          # 安装构建工具和依赖
-          pip3.11 install --upgrade pip
-          pip3.11 install nuitka zstandard ordered-set
-          pip3.11 install -r requirements.txt
-          
-          # 使用 Nuitka 构建
-          cd /workspace
-          python3.11 -m nuitka \
-            --standalone \
-            --onefile \
-            --assume-yes-for-downloads \
-            --enable-plugin=tk-inter \
-            --plugin-enable=pylint-warnings \
-            --include-package-data=certifi \
-            --output-filename=app \
-            --output-dir=build/linux_x64 \
-            src/main.py
-            
-          # 打包构建结果
-          cd build/linux_x64
-          if [ -f "app" ]; then
-            mv app linux_x64_app
-            zip -r ../linux_x64.zip linux_x64_app
-          elif [ -f "app.bin" ]; then
-            mv app.bin linux_x64_app
-            zip -r ../linux_x64.zip linux_x64_app
-          else
-            echo "Error: No build output found! Contents:"
-            ls -la
-            exit 1
-          fi
-          '
+    - name: Install build tools and dependencies
+      run: |
+        pip3.11 install --upgrade pip
+        pip3.11 install nuitka zstandard ordered-set
+        pip3.11 install -r requirements.txt
+        
+    - name: Build with Nuitka
+      run: |
+        mkdir -p build/linux_x64
+        python3.11 -m nuitka \
+          --standalone \
+          --onefile \
+          --assume-yes-for-downloads \
+          --enable-plugin=tk-inter \
+          --plugin-enable=pylint-warnings \
+          --include-package-data=certifi \
+          --output-filename=app \
+          --output-dir=build/linux_x64 \
+          src/main.py
+        
+    - name: Package Linux artifact
+      run: |
+        cd build/linux_x64
+        
+        if [ -f "app" ]; then
+          mv app linux_x64_app
+          zip -r ../linux_x64.zip linux_x64_app
+        elif [ -f "app.bin" ]; then
+          mv app.bin linux_x64_app
+          zip -r ../linux_x64.zip linux_x64_app
+        else
+          echo "Error: No build output found! Contents:"
+          ls -la
+          exit 1
+        fi
+        
+        cd ../..
         
     - name: Upload Linux artifact
       uses: actions/upload-artifact@v4
