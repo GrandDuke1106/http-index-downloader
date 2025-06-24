@@ -1,8 +1,9 @@
-*
+/*
 
 
 !.gitignore
-!http_index_downloader.py
+!src/
+!assets/
 !README.md
 !LICENSE
 !.git/
