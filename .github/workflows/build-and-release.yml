@@ -18,8 +18,8 @@ jobs:
             artifact_name: linux_x64
             nuitka_arch: x86_64
           - os: macos-latest
-            artifact_name: macos_universal
-            nuitka_arch: universal
+            artifact_name: macos_arm64
+            nuitka_arch: arm64
           - os: windows-latest
             artifact_name: windows_x64
             nuitka_arch: x86_64
@@ -54,7 +54,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install nuitka zstandard ordered-set
         
-    # 为每个平台使用不同的构建脚本
+    # Linux 构建
     - name: Build for Linux
       if: runner.os == 'Linux'
       run: |
@@ -69,6 +69,7 @@ jobs:
           --output-dir=build/${{ matrix.artifact_name }} \
           src/main.py
         
+    # macOS 构建 (使用 arm64)
     - name: Build for macOS
       if: runner.os == 'macOS'
       run: |
@@ -86,6 +87,7 @@ jobs:
           --output-dir=build/${{ matrix.artifact_name }} \
           src/main.py
         
+    # Windows 构建 (添加必要的版本信息)
     - name: Build for Windows
       if: runner.os == 'Windows'
       shell: cmd
@@ -100,43 +102,79 @@ jobs:
           --windows-icon-from-ico=assets/icon.ico ^
           --windows-company-name=MyCompany ^
           --windows-product-name=MyApp ^
+          --windows-file-version=1.0.0 ^
+          --windows-product-version=1.0.0 ^
           --output-filename=app.exe ^
           --output-dir=build\%ARTIFACT_NAME% ^
           src/main.py
       env:
         ARTIFACT_NAME: ${{ matrix.artifact_name }}
         
-    # 统一打包步骤
-    - name: Package artifacts
+    # 平台独立的打包步骤
+    - name: Package Linux artifact
+      if: runner.os == 'Linux'
       run: |
         cd build/${{ matrix.artifact_name }}
         
-        if [ "${{ runner.os }}" = "Linux" ] || [ "${{ runner.os }}" = "macOS" ]; then
-          # Linux/macOS 使用通用打包逻辑
-          if [ -f "app" ]; then
-            mv app ${{ matrix.artifact_name }}_app
-            zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
-          elif [ -f "app.bin" ]; then
-            mv app.bin ${{ matrix.artifact_name }}_app
-            zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
-          else
-            echo "Error: No build output found!"
-            ls -la
-            exit 1
-          fi
-        elif [ "${{ runner.os }}" = "Windows" ]; then
-          # Windows 打包逻辑
-          if exist "app.exe" (
-            ren app.exe ${{ matrix.artifact_name }}_app.exe
-            zip -r ..\${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app.exe
-          ) else (
-            echo Error: No build output found!
-            dir
-            exit /b 1
-          )
+        # 检查可能的输出文件名
+        if [ -f "app" ]; then
+          mv app ${{ matrix.artifact_name }}_app
+          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+        elif [ -f "app.bin" ]; then
+          mv app.bin ${{ matrix.artifact_name }}_app
+          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+        else
+          echo "Error: No build output found! Contents:"
+          ls -la
+          exit 1
         fi
         
         cd ../..
+        
+    - name: Package macOS artifact
+      if: runner.os == 'macOS'
+      run: |
+        cd build/${{ matrix.artifact_name }}
+        
+        # 检查可能的输出文件名
+        if [ -f "app" ]; then
+          mv app ${{ matrix.artifact_name }}_app
+          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+        elif [ -f "app.bin" ]; then
+          mv app.bin ${{ matrix.artifact_name }}_app
+          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}_app
+        else
+          echo "Error: No build output found! Contents:"
+          ls -la
+          exit 1
+        fi
+        
+        cd ../..
+        
+    - name: Package Windows artifact
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        cd build\%ARTIFACT_NAME%
+        
+        if exist "app.exe" (
+          ren app.exe %ARTIFACT_NAME%_app.exe
+          zip -r ..\%ARTIFACT_NAME%.zip %ARTIFACT_NAME%_app.exe
+        ) else (
+          echo Error: No build output found! Contents:
+          dir
+          exit /b 1
+        )
+        
+        cd ..\..
+      env:
+        ARTIFACT_NAME: ${{ matrix.artifact_name }}
+  
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}_build
+        path: build/${{ matrix.artifact_name }}.zip
   
   create-release:
     name: Create Release
@@ -158,12 +196,12 @@ jobs:
         echo "# Release Notes" > release/CHANGELOG.md
         echo "## Version ${GITHUB_REF_NAME}" >> release/CHANGELOG.md
         echo "- Built on $(date)" >> release/CHANGELOG.md
-        echo "- Includes builds for Windows, macOS and Linux" >> release/CHANGELOG.md
+        echo "- Includes builds for Windows, macOS (ARM64) and Linux" >> release/CHANGELOG.md
         echo "" >> release/CHANGELOG.md
         echo "## Installation" >> release/CHANGELOG.md
         echo "Download the appropriate package for your system:" >> release/CHANGELOG.md
         echo "- Windows: windows_x64.zip" >> release/CHANGELOG.md
-        echo "- macOS: macos_universal.zip" >> release/CHANGELOG.md
+        echo "- macOS (Apple Silicon): macos_arm64.zip" >> release/CHANGELOG.md
         echo "- Linux: linux_x64.zip" >> release/CHANGELOG.md
         
     - name: Create Release
@@ -204,6 +242,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: release/macos_universal.zip
-        asset_name: macos_universal.zip
+        asset_path: release/macos_arm64.zip
+        asset_name: macos_arm64.zip
         asset_content_type: application/zip
