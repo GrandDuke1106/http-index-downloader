@@ -91,6 +91,15 @@ python src/main.py "https://example.com/path/" --threads 20
 
 # 启用详细日志模式（调试用）
 python src/main.py "https://example.com/path/" --verbose
+
+# 仅下载更新的文件（时间戳比较）
+python downloader.py http://example.com/dir/ --update
+
+# 使用校验和验证并备份已存在文件
+python downloader.py http://example.com/dir/ --checksum --existing backup
+
+# 完整下载（覆盖所有文件）
+python downloader.py http://example.com/dir/ --existing overwrite
 ```
 
 
@@ -117,6 +126,10 @@ python src/main.py "https://example.com/path/" --verbose
 5. **目录结构**：
    - 本地目录结构会与远程服务器保持一致
    - 根目录名称基于 URL 路径自动生成
+
+6. **增量下载**:
+   - 尽量使用时间戳比较来增量更新，性能较好
+   - 使用校验和功能需要服务器请求头支持E-Tag（较少支持）或MD5（基本不支持）
 
 ## 常见问题解决
 
