@@ -32,7 +32,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install system dependencies
       if: runner.os == 'Linux'
       run: |
@@ -52,7 +52,7 @@ jobs:
     - name: Install build tools
       run: |
         python -m pip install --upgrade pip
-        pip install nuitka zstandard ordered-set
+        pip install nuitka zstandard ordered-set beautifulsoup4 requests
         
     # 为所有平台添加模块包含指令
     - name: Build for Linux
@@ -65,13 +65,6 @@ jobs:
           --assume-yes-for-downloads \
           --enable-plugin=tk-inter \
           --plugin-enable=pylint-warnings \
-          --include-module=requests \
-          --include-module=urllib3 \
-          --include-module=chardet \
-          --include-module=idna \
-          --include-module=certifi \
-          --include-module=charset_normalizer \
-          --include-package-data=certifi \
           --output-filename=app \
           --output-dir=build/${{ matrix.artifact_name }} \
           src/main.py
@@ -89,13 +82,6 @@ jobs:
           --macos-create-app-bundle \
           --macos-app-icon=assets/icon.icns \
           --macos-target-arch=${{ matrix.nuitka_arch }} \
-          --include-module=requests \
-          --include-module=urllib3 \
-          --include-module=chardet \
-          --include-module=idna \
-          --include-module=certifi \
-          --include-module=charset_normalizer \
-          --include-package-data=certifi \
           --output-filename=app \
           --output-dir=build/${{ matrix.artifact_name }} \
           src/main.py
@@ -116,13 +102,6 @@ jobs:
           --windows-product-name=MyApp ^
           --windows-file-version=1.0.0 ^
           --windows-product-version=1.0.0 ^
-          --include-module=requests ^
-          --include-module=urllib3 ^
-          --include-module=chardet ^
-          --include-module=idna ^
-          --include-module=certifi ^
-          --include-module=charset_normalizer ^
-          --include-package-data=certifi ^
           --output-filename=app.exe ^
           --output-dir=build\%ARTIFACT_NAME% ^
           src/main.py
