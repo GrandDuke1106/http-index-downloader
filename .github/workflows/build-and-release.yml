@@ -18,7 +18,6 @@ jobs:
       
     - name: Build in ManyLinux container
       run: |
-        # 创建构建目录
         mkdir -p build/linux_x64
         
         # 使用 Docker 运行 ManyLinux 容器
@@ -26,7 +25,15 @@ jobs:
           quay.io/pypa/manylinux2014_x86_64 \
           bash -c '
           # 安装必要的依赖
-          yum -y install glibc-static zip
+          yum -y install glibc-static zip xz
+          
+          # 解压静态库
+          cd /opt/_internal
+          if [ -f "static-libs-for-embedding-only.tar.xz" ]; then
+            tar xf static-libs-for-embedding-only.tar.xz
+          else
+            echo "Warning: static-libs-for-embedding-only.tar.xz not found!"
+          fi
           
           # 设置 Python 3.11
           export PATH=/opt/python/cp311-cp311/bin:$PATH
@@ -45,6 +52,7 @@ jobs:
             --assume-yes-for-downloads \
             --enable-plugin=tk-inter \
             --plugin-enable=pylint-warnings \
+            --static-libpython=yes \
             --output-filename=app \
             --output-dir=build/linux_x64 \
             src/main.py
