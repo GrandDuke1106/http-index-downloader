@@ -2,7 +2,7 @@
 
 
 !.gitignore
-!http_index_downloader
+!http_index_downloader.py
 !README.md
 !LICENSE
 !.git/
