@@ -54,7 +54,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install nuitka zstandard ordered-set
         
-    # Linux 构建
+    # 为所有平台添加模块包含指令
     - name: Build for Linux
       if: runner.os == 'Linux'
       run: |
@@ -65,11 +65,17 @@ jobs:
           --assume-yes-for-downloads \
           --enable-plugin=tk-inter \
           --plugin-enable=pylint-warnings \
+          --include-module=requests \
+          --include-module=urllib3 \
+          --include-module=chardet \
+          --include-module=idna \
+          --include-module=certifi \
+          --include-module=charset_normalizer \
+          --include-package-data=certifi \
           --output-filename=app \
           --output-dir=build/${{ matrix.artifact_name }} \
           src/main.py
         
-    # macOS 构建 (使用 arm64)
     - name: Build for macOS
       if: runner.os == 'macOS'
       run: |
@@ -83,11 +89,17 @@ jobs:
           --macos-create-app-bundle \
           --macos-app-icon=assets/icon.icns \
           --macos-target-arch=${{ matrix.nuitka_arch }} \
+          --include-module=requests \
+          --include-module=urllib3 \
+          --include-module=chardet \
+          --include-module=idna \
+          --include-module=certifi \
+          --include-module=charset_normalizer \
+          --include-package-data=certifi \
           --output-filename=app \
           --output-dir=build/${{ matrix.artifact_name }} \
           src/main.py
         
-    # Windows 构建 (添加必要的版本信息)
     - name: Build for Windows
       if: runner.os == 'Windows'
       shell: cmd
@@ -104,6 +116,13 @@ jobs:
           --windows-product-name=MyApp ^
           --windows-file-version=1.0.0 ^
           --windows-product-version=1.0.0 ^
+          --include-module=requests ^
+          --include-module=urllib3 ^
+          --include-module=chardet ^
+          --include-module=idna ^
+          --include-module=certifi ^
+          --include-module=charset_normalizer ^
+          --include-package-data=certifi ^
           --output-filename=app.exe ^
           --output-dir=build\%ARTIFACT_NAME% ^
           src/main.py
